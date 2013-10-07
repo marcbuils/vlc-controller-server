@@ -1,1 +1,0 @@
-window.vlcApi = require('vlc-api');
