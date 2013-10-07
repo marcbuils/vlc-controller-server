@@ -1,0 +1,19 @@
+{
+  "name": "vlc-controler-server",
+  "version": "0.1.0",
+  "description": "VLCControler server",
+  "main": "server.js",
+  "dependencies": {
+    "lodash": "~2.2.0",
+    "requirejs": "~2.1.8",
+    "socket.io": "~0.9.16",
+    "vlc-api": "0.0.0"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "author": "",
+  "license": "BSD"
+}
