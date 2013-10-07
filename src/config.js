@@ -1,3 +1,5 @@
+/*jslint nomen: true*/
+/*global define */
 define({
     PATH_VIDEO_INTRODUCTION: '/Users/marcbuils/Google Drive/Perso/video/intro2.mov',
     URL_LISTE_VIDEO: 'http://localhost/liste-videos.json',

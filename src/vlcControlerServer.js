@@ -1,6 +1,8 @@
 // Serveur de controle pour VLC
 // ----------------------------
 //
+/*jslint nomen: true*/
+/*global define, console, setInterval */
 define([
     'lodash',
     'socket.io',
@@ -10,45 +12,30 @@ define([
 ], function (_, io, vlcApi, config, requirejs) {
     'use strict';
 
-    var module = function () {
-        if (!module.initialized) {
-            module.initialize();
-            module.initialized = true;
-        }
-
-        return module;
-    };
-   
-    _.extend(module, {
+    var module = {
         initialized: false,
         listeVideos: null,
-       
-        // *** initialize() ***  
-        // Initialisation du module.  
-        // 
-        // @return undefined
-        // 
-        initialize: function () {},
-       
-        // *** start() ***  
-        // Vidage la playliste VLC.  
-        // Ajout de la video d'introduction sur VLC.  
-        // Récupération de la liste des vidéos diponibles.  
-        // Demarrage du serveur WebSocket.  
-        // Mise en place d'envoi automatique de vidéo.
+
+        // *** lancer() ***  
+        // Lancement de l'application  
+        // - Vidage la playliste VLC.  
+        // - Ajout de la video d'introduction sur VLC.  
+        // - Récupération de la liste des vidéos diponibles.  
+        // - Demarrage du serveur WebSocket.  
+        // - Mise en place d'envoi automatique de vidéo.
         // 
         // @return undefined  
         //
-        start: function () {
+        demarrer: function () {
             console.debug("Demarrage du serveur");
-           
+
             this.viderPlaylistVLC();
-            this.ajouterVideoIntroduction();
+            this.lireVideoIntroduction();
             this.recupererListeVideosDisponibles();
             this.demarrerServeurWebsocket();
             this.demarrerEnvoiVideoSiPlaylistVide();
         },
-       
+
         // *** viderPlaylistVLC() ***  
         // Vide la playliste VLC.  
         // 
@@ -57,16 +44,16 @@ define([
         viderPlaylistVLC: function () {
             vlcApi.status.empty();
         },
-       
+
         // *** ajouterVideoIntroduction() ***  
         // Ajout de la video d'introduction sur VLC.
         // 
         // @return undefined
         //
-        ajouterVideoIntroduction: function () {
+        lireVideoIntroduction: function () {
             vlcApi().status.play(config.PATH_VIDEO_INTRODUCTION);
         },
-               
+
         // *** recupererListeVideosDisponibles() ***  
         // Récupération de la liste des vidéos diponibles.
         // 
@@ -77,7 +64,7 @@ define([
                 this.listeVideos = listeVideos;
             });
         },
-               
+
         // *** demarrerServeurWebsocket() ***  
         // Demarrage du serveur WebSocket.
         //
@@ -85,9 +72,9 @@ define([
         //
         demarrerServeurWebsocket: function () {
             io = io.listen(config.WEBSOCKET_PORT);
-            io.sockets.on('connection', _.bind(this.onconnection, this));
+            io.sockets.on('connection', _.bind(this.initialiserCommandesClient, this));
         },
-         
+
         // *** demarrerEnvoiVideoSiPlaylistVide() ***  
         // Mise en place d'envoi automatique de vidéo.
         //
@@ -99,27 +86,41 @@ define([
                 config.INTERVAL_VERIFICATION_STATUS_VLC
             );
         },
-       
-        // *** onconnection() ***  
-        // Callback appelée lors de la réception de commandes WebSocket.
+
+        // *** initialiserCommandesClient() ***  
+        // Initialise les commandes utilisables par les clients.
         // Lit une vidéo lors de la reception de la commande play.
         // 
         // @return undefined
         //
-        onconnection: function (socket) {
-            socket.on('play', _.bind(this.onplay, this));
+        initialiserCommandesClient: function (socket) {
+            socket.on('play', _.bind(this.recupererInformationsLecturePuisLectureVideo, this));
         },
-       
-        // *** onplay() ***  
-        // Lit une vidéo lors de la reception de la commande play. 
+
+        // *** recupererInformationsLecturePuisLectureVideo() ***  
+        // Récupère les informations sur la vidéo en cours de lecture pour savoir
+        // si l'intro doit être ajoutée ou non avant de lire la video demandée
         // 
         // @param struct data  
         // @return undefined
         //
-        onplay: function (data) {
-            this.play(data.input);
+        recupererInformationsLecturePuisLectureVideo: function (data) {
+            vlcApi.status.get(this.lireIntroSiNecessaireEtAjoutVideo);
         },
-       
+
+        // *** lireIntroSiNecessaireEtAjouterVideo() ***  
+        // Si l'intro n'est pas en cours de lecture, lire l'intro
+        // et ajoute la nouvelle vidéo à la playlist
+        // 
+        // @param struct infos  
+        // @return undefined
+        //
+        lireIntroSiNecessaireEtAjouterVideo: function (infos) {
+            if (infos.information.category.meta.filename !== config.PATH_VIDEO_INTRODUCTION) {
+                
+            }
+        },
+
         // *** play() ***  
         // Lit une vidéo. 
         // 
@@ -128,18 +129,23 @@ define([
         //
         play: function (input) {
             console.debug("Demande de lecture d'une vidéo: ", input);
-            
+
             vlcApi().status.play(input, function () {
                 console.debug("Vidéo démarrée: ", input);
             });
         },
-                
+
+        // ** envoyerVideoSiPlaylistVide **  
+        // Ajoute une vidéo dans la playlist si nécessaire
+        //
+        // @return undefined
+        //
         envoyerVideoSiPlaylistVide: function () {
-            vlcApi.status.
+            vlcApi.status.empty();
         }
-    });
-       
+    };
+
     return {
-        start: _.bind(module().start, module)
+        lancer: _.bind(module().lancer, module)
     };
 });
