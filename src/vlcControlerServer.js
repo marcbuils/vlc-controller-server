@@ -1,138 +1,155 @@
 // Serveur de controle pour VLC
 // ----------------------------
 //
+// ** Interfaces d'entrées **  
+// - Fonction lancer  
+// - Commande Websocket play  
+// - Vérification à interval régulier
+//
+// ** Interfaces de sortie **  
+// - Ajout de vidéos dans la playlist VLC  
+// - Lecture de vidéos dans VLC
+//
+
 /*jslint nomen: true*/
-/*global define, console, setInterval */
+/*global define, console, setInterval, require */
 define([
     'lodash',
     'socket.io',
+    'request',
     'vlc-api',
     'config',
-    'require'
-], function (_, io, vlcApi, config, requirejs) {
+    'q',
+    'path'
+], function (_, io, request, vlcApi, config, Q, path) {
     'use strict';
 
-    var module = {
-        initialized: false,
-        listeVideos: null,
+    var module = function () {
+        if (!module._initialized) {
+            module._initialize();
+            module._initialized = true;
+        }
+
+        return module;
+    };
+
+    _.extend(module, {
+        _initialized: false,
+        _listeVideos: [],
+
+        _initialize: function () {
+            vlcApi({
+                host: config.HOST,
+                port: config.PORT
+            });
+        },
 
         // *** lancer() ***  
         // Lancement de l'application  
         // - Vidage la playliste VLC.  
-        // - Ajout de la video d'introduction sur VLC.  
         // - Récupération de la liste des vidéos diponibles.  
         // - Demarrage du serveur WebSocket.  
         // - Mise en place d'envoi automatique de vidéo.
         // 
         // @return undefined  
         //
-        demarrer: function () {
-            console.debug("Demarrage du serveur");
+        lancer: function () {
+            console.log("Demarrage du serveur");
 
-            this.viderPlaylistVLC();
-            this.lireVideoIntroduction();
-            this.recupererListeVideosDisponibles();
-            this.demarrerServeurWebsocket();
-            this.demarrerEnvoiVideoSiPlaylistVide();
+            this._viderPlaylistVLC();
+            this._lireVideoIntroduction();
+            this._recupererListeVideosDisponibles();
+            this._demarrerServeurWebsocket();
+            this._demarrerEnvoiVideoSiPlaylistVide();
         },
 
-        // *** viderPlaylistVLC() ***  
-        // Vide la playliste VLC.  
-        // 
-        // @return undefined
-        //
-        viderPlaylistVLC: function () {
-            vlcApi.status.empty();
+        _viderPlaylistVLC: function () {
+            vlcApi().status.empty();
         },
 
-        // *** ajouterVideoIntroduction() ***  
-        // Ajout de la video d'introduction sur VLC.
-        // 
-        // @return undefined
-        //
-        lireVideoIntroduction: function () {
-            vlcApi().status.play(config.PATH_VIDEO_INTRODUCTION);
+        _recupererListeVideosDisponibles: function () {
+            request({
+                method: 'GET',
+                uri: config.URL_LISTE_VIDEO,
+                qs: {}
+            }, _.bind(function (err, res, body) {
+                console.log('Liste des videos disponibles: ', body);
+                this._listeVideos = JSON.parse(body);
+            }, this));
         },
 
-        // *** recupererListeVideosDisponibles() ***  
-        // Récupération de la liste des vidéos diponibles.
-        // 
-        // @return undefined
-        //
-        recupererListeVideosDisponibles: function () {
-            requirejs(['json!' + config.URL_LISTE_VIDEO], function (listeVideos) {
-                this.listeVideos = listeVideos;
-            });
-        },
-
-        // *** demarrerServeurWebsocket() ***  
-        // Demarrage du serveur WebSocket.
-        //
-        // @return undefined
-        //
-        demarrerServeurWebsocket: function () {
+        _demarrerServeurWebsocket: function () {
             io = io.listen(config.WEBSOCKET_PORT);
-            io.sockets.on('connection', _.bind(this.initialiserCommandesClient, this));
+            io.sockets.on('connection', _.bind(this._initialiserCommandesClient, this));
         },
 
-        // *** demarrerEnvoiVideoSiPlaylistVide() ***  
-        // Mise en place d'envoi automatique de vidéo.
-        //
-        // @return undefined
-        //
-        demarrerEnvoiVideoSiPlaylistVide: function () {
+        _demarrerEnvoiVideoSiPlaylistVide: function () {
             setInterval(
-                _.bind(this.envoyerVideoSiPlaylistVide, this),
+                _.bind(this._envoyerVideoSiPlaylistVide, this),
                 config.INTERVAL_VERIFICATION_STATUS_VLC
             );
         },
 
-        // *** initialiserCommandesClient() ***  
-        // Initialise les commandes utilisables par les clients.
-        // Lit une vidéo lors de la reception de la commande play.
-        // 
-        // @return undefined
-        //
-        initialiserCommandesClient: function (socket) {
-            socket.on('play', _.bind(this.recupererInformationsLecturePuisLectureVideo, this));
+        _initialiserCommandesClient: function (socket) {
+            socket.on('play', _.bind(this._lireIntroSiNecessaireEtAjouterVideo, this));
         },
 
-        // *** recupererInformationsLecturePuisLectureVideo() ***  
+        // *** lireIntroSiNecessaireEtAjouterVideo(donnees) ***  
         // Récupère les informations sur la vidéo en cours de lecture pour savoir
         // si l'intro doit être ajoutée ou non avant de lire la video demandée
         // 
-        // @param struct data  
+        // @param struct donnees  
         // @return undefined
         //
-        recupererInformationsLecturePuisLectureVideo: function (data) {
-            vlcApi.status.get(this.lireIntroSiNecessaireEtAjoutVideo);
+        _lireIntroSiNecessaireEtAjouterVideo: function (donnees) {
+            vlcApi().status(_.bind(function (vide, infos) {
+                if (!this._estVideoIntroduction(infos.information.category.meta.filename)) {
+                    this._lireVideoIntroduction();
+                }
+
+                this._ajouterVideo(donnees.input);
+                this._cleanerPlaylistApresLecture();
+            }, this));
         },
 
-        // *** lireIntroSiNecessaireEtAjouterVideo() ***  
-        // Si l'intro n'est pas en cours de lecture, lire l'intro
-        // et ajoute la nouvelle vidéo à la playlist
-        // 
-        // @param struct infos  
-        // @return undefined
-        //
-        lireIntroSiNecessaireEtAjouterVideo: function (infos) {
-            if (infos.information.category.meta.filename !== config.PATH_VIDEO_INTRODUCTION) {
-                
-            }
+        _estVideoIntroduction: function (nomFichierVideo) {
+            return nomFichierVideo === config.FILENAME_VIDEO_INTRODUCTION + config.EXT_VIDEO;
         },
 
-        // *** play() ***  
-        // Lit une vidéo. 
-        // 
-        // @param strint input  
-        // @return undefined
-        //
-        play: function (input) {
-            console.debug("Demande de lecture d'une vidéo: ", input);
+        _lireVideoIntroduction: function () {
+            vlcApi().status.play(config.PATH_VIDEO + config.FILENAME_VIDEO_INTRODUCTION + config.EXT_VIDEO, function ()  {});
+        },
 
-            vlcApi().status.play(input, function () {
-                console.debug("Vidéo démarrée: ", input);
+        _ajouterVideo: function (cheminFichierVideo) {
+            var video = config.PATH_VIDEO + path.basename(cheminFichierVideo) + config.EXT_VIDEO;
+            
+            console.log("Demande d'ajout d'une vidéo: ", video);
+
+            vlcApi().status.enqueue(video, function () {
+                console.log("Vidéo ajoutée: ", video);
+                vlcApi().status.enqueue(config.PATH_VIDEO + config.FILENAME_VIDEO_INTRODUCTION + config.EXT_VIDEO, _.bind(function () {
+                    console.log("Vidéo Introduction ajoutée");
+                }, this));
             });
+        },
+
+        /* 
+         * Ne conserver que les 2 derniers fichiers de la playlist
+         * (Introdusction en cours de lecture + vidéo à lire)
+         */
+        _cleanerPlaylistApresLecture: function () {
+            vlcApi().playlist(_.bind(function (vide, playlist) {
+                var i = 0,
+                    nbVideosASupprimer = playlist.children[0].children.length - 2;
+
+                for (i = 0; i < nbVideosASupprimer; i = i + 1) {
+                    this._supprimerVideo(playlist.children[0].children[i].id);
+                }
+            }, this));
+        },
+
+        _supprimerVideo: function (idVideo) {
+            //vlcApi().status["delete"](idVideo);
         },
 
         // ** envoyerVideoSiPlaylistVide **  
@@ -140,12 +157,78 @@ define([
         //
         // @return undefined
         //
-        envoyerVideoSiPlaylistVide: function () {
-            vlcApi.status.empty();
-        }
-    };
+        _envoyerVideoSiPlaylistVide: function () {
+            new Q()
+                .then(function () {
+                    var deferred = Q.defer();
 
-    return {
-        lancer: _.bind(module().lancer, module)
-    };
+                    vlcApi().status(function (vide, infos) {
+                        deferred.resolve(infos);
+                    });
+
+                    return deferred.promise;
+                })
+                .then(function (infos) {
+                    var deferred = Q.defer();
+
+                    vlcApi().playlist(function (vide, playlist) {
+                        deferred.resolve([infos, playlist]);
+                    });
+
+                    return deferred.promise;
+                })
+                .spread(_.bind(function (infos, playlist) {
+                    var posDerniereVideo = playlist.children[0].children.length - 1,
+                        cheminVideo = '',
+                        posVideo = 0;
+
+                    if (infos.currentplid == playlist.children[0].children[posDerniereVideo].id) {
+                        posVideo = parseInt(Math.random() * this._listeVideos.length, 10);
+                        cheminVideo = this._listeVideos[posVideo];
+
+                        this._ajouterVideoAutomatique(cheminVideo.src);
+                        this._cleanerPlaylistApresAjoutAutomatique();
+                    }
+                }, this));
+        },
+
+        _ajouterVideoAutomatique: function (cheminVideo) {
+            new Q()
+                .then(_.bind(function () {
+                    var deferred = Q.defer();
+
+                    vlcApi().status.enqueue(config.PATH_VIDEO + path.basename(cheminVideo) + config.EXT_VIDEO, _.bind(function () {
+                        deferred.resolve();
+                    }, this));
+
+                    return deferred.promise;
+                }, this))
+                .then(_.bind(function () {
+                    var deferred = Q.defer();
+
+                    vlcApi().status.enqueue(config.PATH_VIDEO + config.FILENAME_VIDEO_INTRODUCTION + config.EXT_VIDEO, _.bind(function () {
+                        deferred.resolve();
+                    }, this));
+
+                    return deferred.promise;
+                }, this));
+        },
+
+        /* 
+         * Ne conserver que les 3 derniers fichiers de la playlist
+         * (Vidéo en cours de lecture + introduction + nouvelle vidéo à lire)
+         */
+        _cleanerPlaylistApresAjoutAutomatique: function () {
+            vlcApi().playlist(_.bind(function (vide, playlist) {
+                var i = 0,
+                    nbVideosASupprimer = playlist.children[0].children.length - 3;
+
+                for (i = 0; i < nbVideosASupprimer; i = i + 1) {
+                    this._supprimerVideo(playlist.children[0].children[i].id);
+                }
+            }, this));
+        }
+    });
+
+    return module;
 });

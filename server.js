@@ -10,5 +10,5 @@ requirejs.config({
 requirejs(['vlcControlerServer'], function (vlcControlerServer) {
     'use strict';
 
-    vlcControlerServer.lancer();
+    vlcControlerServer().lancer();
 });
