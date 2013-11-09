@@ -1,7 +1,7 @@
 {
-  "name": "vlc-controler-server",
+  "name": "vlc-controller-server",
   "version": "0.1.0",
-  "description": "VLCControler server",
+  "description": "VLCControlLer server",
   "main": "server.js",
   "dependencies": {
     "lodash": "~2.2.0",
@@ -16,6 +16,13 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js"
   },
-  "author": "",
-  "license": "BSD"
+  "author": "SAS Marc Buils Consultant (http://www.marcbuils.fr)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/marcbuils/vlc-controller-server.git"
+  },
+  "engines": {
+    "node": ">=0.10"
+  }
 }

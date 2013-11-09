@@ -12,7 +12,7 @@
 //
 
 /*jslint nomen: true*/
-/*global define, console, setInterval, require */
+/*global define, console, setInterval */
 define([
     'lodash',
     'socket.io',
@@ -113,7 +113,8 @@ define([
         },
 
         _estVideoIntroduction: function (nomFichierVideo) {
-            return nomFichierVideo === config.FILENAME_VIDEO_INTRODUCTION + config.EXT_VIDEO;
+            //@todo fonctionnalité a réactiver lors la fonction supprimer sera OK
+            return false && nomFichierVideo === config.FILENAME_VIDEO_INTRODUCTION + config.EXT_VIDEO;
         },
 
         _lireVideoIntroduction: function () {
@@ -149,6 +150,7 @@ define([
         },
 
         _supprimerVideo: function (idVideo) {
+            //@todo: Debugger cette fonctionalité
             //vlcApi().status["delete"](idVideo);
         },
 
